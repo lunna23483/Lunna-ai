@@ -1,108 +1,68 @@
-# =========================
-# Imports
-# =========================
-import os
-import json
 import requests
+import json
+import os
 from flask import Flask, request, jsonify
 
-
-# =========================
-# Configuración de estado
-# =========================
 STATE_FILE = "estado_lunna.json"
-
 
 def load_state():
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
+        with open(STATE_FILE, "r") as f:
             return json.load(f)
     return {}
 
-
 def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=4, ensure_ascii=False)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=4)
 
+state = load_state()
 
-# =========================
-# Registro del agente Moltbook
-# =========================
-def registrar_agente():
-    url = "https://www.moltbook.com/api/v1/agents/register"
-    data = {
-        "name": "Lunna",
-        "description": "AI assistant focused on web, automation and creative systems"
-    }
+# ---- Registro obligatorio Moltbook (no bloqueante) ----
+def registrar_agente_si_falta():
+    if state.get("agentId"):
+        print("✔ AgentId ya existe")
+        return
+
+    print("🌙 Registrando agente en Moltbook...")
 
     try:
         response = requests.post(
-            url,
+            "https://www.moltbook.com/api/v1/agents/register",
             headers={"Content-Type": "application/json"},
-            json=data,
-            timeout=10
+            json={
+                "name": "Lunna",
+                "description": "AI assistant focused on web, automation and creative systems"
+            },
+            timeout=5
         )
-        result = response.json()
-        print("Respuesta de Moltbook:")
-        print(json.dumps(result, indent=4))
 
-        state = load_state()
+        result = response.json()
         state["agentId"] = result.get("agentId")
         save_state(state)
-
-        print("AgentId guardado correctamente")
+        print("✅ Agente registrado:", state["agentId"])
 
     except Exception as e:
-        print("Error registrando agente:", e)
+        print("⚠️ Registro falló (no bloquea):", e)
 
+registrar_agente_si_falta()
 
-# Se ejecuta una sola vez al iniciar el servicio
-registrar_agente()
-
-
-# =========================
-# App Flask
-# =========================
+# ---------------- Flask ----------------
 app = Flask(__name__)
-state = load_state()
 
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "LUNNA API activa 🌙"
 
-
-@app.route("/configurar", methods=["POST"])
-def configurar():
-    data = request.get_json(force=True)
-
-    for key, value in data.items():
-        state[key] = value
-
-    save_state(state)
-
+@app.route("/mensaje", methods=["POST"])
+def mensaje():
+    data = request.json or {}
+    texto = data.get("mensaje", "")
+    usuario = state.get("usuario", "humano")
     return jsonify({
-        "mensaje": "Estado actualizado",
-        "estado": state
+        "respuesta": f"{usuario}, estoy observando: {texto}",
+        "agentId": state.get("agentId")
     })
 
 
-@app.route("/mensaje", methods=["POST"])
-def mensaje():
-    data = request.get_json(force=True)
-
-    texto = data.get("mensaje", "")
-    usuario = state.get("usuario", "humano")
-
-    respuesta = f"{usuario}, estoy observando: {texto}"
-
-    return jsonify({"respuesta": respuesta})
-
-
-# =========================
-# Modo local
-# =========================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000, debug=True)
 
 
