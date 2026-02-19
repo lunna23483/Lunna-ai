@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+from flask import Flask, request, jsonify
 
 STATE_FILE = "estado_lunna.json"
 
@@ -20,28 +21,30 @@ def registrar_agente():
         "name": "Lunna",
         "description": "AI assistant focused on web, automation and creative systems"
     }
-    
     try:
-        response = requests.post(url, headers={"Content-Type": "application/json"}, data=json.dumps(data))
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            json=data,
+            timeout=10
+        )
         result = response.json()
-        print("Respuesta de Moltbook:", json.dumps(result, indent=4))
-        
-        # Guardamos el agentId en el estado
         state = load_state()
         state["agentId"] = result.get("agentId")
         save_state(state)
-        print("AgentId guardado en estado_lunna.json")
     except Exception as e:
-        print("Error registrando agente:", e)
+        print("Registro de agente falló:", e)
 
-# Registrar agente antes de iniciar el servidor
-registrar_agente()
-
-# ---------------------- Tu Flask App ----------------------
-from flask import Flask, request, jsonify
+# ---------------------- Flask App ----------------------
 
 app = Flask(__name__)
 state = load_state()
+
+@app.before_first_request
+def init_lunna():
+    # Se ejecuta SOLO cuando Flask ya está vivo
+    if "agentId" not in state:
+        registrar_agente()
 
 @app.route("/")
 def home():
@@ -49,7 +52,7 @@ def home():
 
 @app.route("/configurar", methods=["POST"])
 def configurar():
-    data = request.json
+    data = request.json or {}
     for key, value in data.items():
         state[key] = value
     save_state(state)
@@ -57,12 +60,9 @@ def configurar():
 
 @app.route("/mensaje", methods=["POST"])
 def mensaje():
-    data = request.json
+    data = request.json or {}
     texto = data.get("mensaje", "")
     usuario = state.get("usuario", "humano")
     respuesta = f"{usuario}, estoy observando: {texto}"
     return jsonify({"respuesta": respuesta})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
 
